@@ -3,27 +3,30 @@ package com.example.fruitsdetection
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.SurfaceTexture
+import android.graphics.*
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.provider.MediaStore
 import android.view.Surface
 import android.view.TextureView
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
 import com.example.fruitsdetection.ml.SsdMobilenetV11Metadata1
+import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.image.ImageProcessor
 import org.tensorflow.lite.support.image.TensorImage
 import org.tensorflow.lite.support.image.ops.ResizeOp
 
 class MainActivity : AppCompatActivity() {
 
-
+    val colors = listOf<Int>(Color.BLUE, Color.GREEN, Color.RED, Color.CYAN, Color.GRAY, Color.BLACK,
+        Color.DKGRAY, Color.MAGENTA, Color.YELLOW, Color.RED)
+    val paint = Paint()
+    lateinit var labels: List<String>
     lateinit var imageProcessor: ImageProcessor
     lateinit var bitmap: Bitmap
     lateinit var imageView: ImageView
@@ -39,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         textureView = findViewById(R.id.textureView)
         getPermission()
 
+        labels = FileUtil.loadLabels(this, "labels.txt")
         imageProcessor = ImageProcessor.Builder().add(ResizeOp(300, 300, ResizeOp.ResizeMethod.BILINEAR)).build()
 
         model = SsdMobilenetV11Metadata1.newInstance(this)
@@ -68,13 +72,33 @@ class MainActivity : AppCompatActivity() {
                 image = imageProcessor.process(image)
 
                 val outputs = model.process(image)
-                val locations = outputs.locationsAsTensorBuffer
-                val classes = outputs.classesAsTensorBuffer
-                val scores = outputs.scoresAsTensorBuffer
-                val numberOfDetections = outputs.numberOfDetectionsAsTensorBuffer
+                val locations = outputs.locationsAsTensorBuffer.floatArray
+                val classes = outputs.classesAsTensorBuffer.floatArray
+                val scores = outputs.scoresAsTensorBuffer.floatArray
+                val numberOfDetections = outputs.numberOfDetectionsAsTensorBuffer.floatArray
 
                 var mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(mutableBitmap)
+
+                val h = mutableBitmap.height
+                val w = mutableBitmap.width
+
+                paint.textSize = h/15f
+                paint.strokeWidth = h/85f
+
+                var x = 0
+
+                scores.forEachIndexed{ index, fl ->
+                    x = index
+                    x *= 4
+                    if (fl > 0.5){
+                        paint.setColor(colors.get(index))
+                        paint.style = Paint.Style.STROKE
+                        canvas.drawRect(RectF(locations.get(x+1)*w, locations.get(x)*h,locations.get(x+3)*w, locations.get(x+2)*h), paint)
+                        paint.style = Paint.Style.FILL
+                        canvas.drawText(labels.get(classes.get(index).toInt())+" "+fl.toString(), locations.get(x+1)*w, locations.get(x)*h, paint)
+                    }
+                }
 
             }
 
